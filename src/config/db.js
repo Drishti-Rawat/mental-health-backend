@@ -1,4 +1,8 @@
 import mongoose from 'mongoose';
+import dns from 'node:dns';
+
+// Ensure reliable MongoDB SRV lookup across local ISPs on Windows
+dns.setServers(['8.8.8.8', '1.1.1.1']);
 
 /**
  * Connect to MongoDB Atlas Cluster via Mongoose

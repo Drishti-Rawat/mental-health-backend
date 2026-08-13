@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
-const userSchema = new mongoose.Schema(
+const adminSchema = new mongoose.Schema(
   {
     name: {
       type: String,
@@ -28,18 +28,27 @@ const userSchema = new mongoose.Schema(
     role: {
       type: String,
       enum: {
-        values: ['user', 'therapist'],
-        message: '{VALUE} is not a valid role. Allowed roles: user, therapist',
+        values: ['superadmin', 'admin', 'supervisor'],
+        message: '{VALUE} is not a valid admin role. Allowed: superadmin, admin, supervisor',
       },
-      default: 'user',
+      default: 'admin',
     },
     status: {
       type: String,
       enum: {
         values: ['pending_approval', 'active', 'inactive', 'rejected'],
-        message: '{VALUE} is not a valid status. Allowed status: pending_approval, active, inactive, rejected',
+        message: '{VALUE} is not a valid status. Allowed: pending_approval, active, inactive, rejected',
       },
-      default: 'active',
+      default: 'pending_approval',
+    },
+    permissions: {
+      type: [String],
+      default: ['view_dashboard', 'manage_users'],
+    },
+    approvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Admin',
+      default: null,
     },
   },
   {
@@ -47,11 +56,11 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-// Instance method to compare password with passwordHash
-userSchema.methods.comparePassword = async function (candidatePassword) {
+// Instance method to compare password
+adminSchema.methods.comparePassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.passwordHash);
 };
 
-const User = mongoose.model('User', userSchema);
+const Admin = mongoose.model('Admin', adminSchema);
 
-export default User;
+export default Admin;

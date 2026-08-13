@@ -1,50 +1,163 @@
-import User from '../models/User.js';
+import * as authService from '../services/authService.js';
+import { setRefreshCookie, clearRefreshCookie } from '../utils/cookie.js';
 
 /**
- * @desc    Register a new user (user / therapist / admin)
+ * @desc    Register a new user
  * @route   POST /api/auth/register
  * @access  Public
  */
-export const registerUser = async (req, res, next) => {
+export const register = async (req, res, next) => {
   try {
     const { name, email, password, role } = req.body;
 
-    // 1. Validation: check required fields
     if (!name || !email || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide name, email, and password',
+        message: 'Name, email, and password are required',
       });
     }
 
-    // 2. Check if user already exists
-    const userExists = await User.findOne({ email: email.toLowerCase() });
-    if (userExists) {
-      return res.status(400).json({
-        success: false,
-        message: 'A user with this email already exists',
-      });
-    }
+    const userAgent = req.headers['user-agent'];
+    const ipAddress = req.ip || req.connection.remoteAddress;
 
-    // 3. Create user document
-    const user = await User.create({
+    const { user, accessToken, refreshToken } = await authService.registerUser({
       name,
       email,
       password,
-      role: role || 'user',
+      role,
+      userAgent,
+      ipAddress,
     });
 
-    // 4. Return success response (excluding password)
+    // Set HTTP-only refresh cookie
+    setRefreshCookie(res, refreshToken);
+
     res.status(201).json({
       success: true,
       message: 'User registered successfully',
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        createdAt: user.createdAt,
-      },
+      user,
+      accessToken,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Login user & create session
+ * @route   POST /api/auth/login
+ * @access  Public
+ */
+export const login = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required',
+      });
+    }
+
+    const userAgent = req.headers['user-agent'];
+    const ipAddress = req.ip || req.connection.remoteAddress;
+
+    const { user, accessToken, refreshToken } = await authService.loginUser({
+      email,
+      password,
+      userAgent,
+      ipAddress,
+    });
+
+    // Set HTTP-only refresh cookie
+    setRefreshCookie(res, refreshToken);
+
+    res.status(200).json({
+      success: true,
+      message: 'Login successful',
+      user,
+      accessToken,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Refresh access token & rotate refresh token
+ * @route   POST /api/auth/refresh
+ * @access  Public (via HTTP-only cookie)
+ */
+export const refresh = async (req, res, next) => {
+  try {
+    const refreshToken = req.cookies.refreshToken;
+
+    if (!refreshToken) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication failed: Refresh token missing from cookies',
+      });
+    }
+
+    const userAgent = req.headers['user-agent'];
+    const ipAddress = req.ip || req.connection.remoteAddress;
+
+    const { user, accessToken, refreshToken: newRefreshToken } = await authService.refreshSession({
+      refreshToken,
+      userAgent,
+      ipAddress,
+    });
+
+    // Rotate HTTP-only refresh cookie
+    setRefreshCookie(res, newRefreshToken);
+
+    res.status(200).json({
+      success: true,
+      message: 'Token refreshed successfully',
+      user,
+      accessToken,
+    });
+  } catch (error) {
+    clearRefreshCookie(res);
+    next(error);
+  }
+};
+
+/**
+ * @desc    Logout current session
+ * @route   POST /api/auth/logout
+ * @access  Public / Protected
+ */
+export const logout = async (req, res, next) => {
+  try {
+    const refreshToken = req.cookies.refreshToken;
+    if (refreshToken) {
+      await authService.logoutSession({ refreshToken });
+    }
+    clearRefreshCookie(res);
+
+    res.status(200).json({
+      success: true,
+      message: 'Logged out successfully',
+    });
+  } catch (error) {
+    clearRefreshCookie(res);
+    next(error);
+  }
+};
+
+
+/**
+ * @desc    Get authenticated user profile
+ * @route   GET /api/auth/me
+ * @access  Protected
+ */
+export const me = async (req, res, next) => {
+  try {
+    const user = await authService.getCurrentUser(req.user.id);
+    res.status(200).json({
+      success: true,
+      user,
     });
   } catch (error) {
     next(error);

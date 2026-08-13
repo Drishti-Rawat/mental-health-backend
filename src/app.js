@@ -1,15 +1,35 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import authRoutes from './routes/authRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
+import { notFound, errorHandler } from './middleware/errorMiddleware.js';
 
 const app = express();
 
-// Middleware
+// Body Parser Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Cookie Parser Middleware
+app.use(cookieParser());
+
+// CORS Middleware with credentials support for HTTP-only cookies
+const allowedOrigins = [
+  process.env.CLIENT_URL || 'http://localhost:3000',
+  process.env.ADMIN_URL || 'http://localhost:3001',
+];
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, true); // Allow during dev, can restrict in strict production
+      }
+    },
     credentials: true,
   })
 );
@@ -18,25 +38,17 @@ app.use(
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
-    message: 'Mental Health Backend API is running smoothly',
+    message: 'Mental Health Authentication API is running smoothly',
     timestamp: new Date().toISOString(),
   });
 });
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
 
-// 404 Route Handler
-app.use((req, res) => {
-  res.status(404).json({ message: `Route ${req.originalUrl} not found` });
-});
-
-// Global Error Handler
-app.use((err, req, res, next) => {
-  console.error('[Server Error]', err.stack);
-  res.status(err.status || 500).json({
-    message: err.message || 'Internal Server Error',
-  });
-});
+// Error Handling Middlewares
+app.use(notFound);
+app.use(errorHandler);
 
 export default app;
