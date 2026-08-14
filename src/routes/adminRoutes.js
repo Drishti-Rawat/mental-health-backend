@@ -7,6 +7,10 @@ import {
   getPendingStaff,
   approveStaff,
   rejectStaff,
+  getAllUsers,
+  getUserDetails,
+  updateUserStatus,
+  deleteUser,
 } from '../controllers/adminController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { admin } from '../middleware/adminMiddleware.js';
@@ -25,5 +29,11 @@ router.use(protect, admin);
 router.get('/staff/pending', getPendingStaff);
 router.patch('/staff/:id/approve', approveStaff);
 router.patch('/staff/:id/reject', rejectStaff);
+
+// User Management Routes
+router.get('/users', getAllUsers);
+router.get('/users/:id', getUserDetails);
+router.patch('/users/:id/status', updateUserStatus);
+router.delete('/users/:id', deleteUser);
 
 export default router;

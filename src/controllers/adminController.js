@@ -239,3 +239,196 @@ export const rejectStaff = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * @desc    Get all registered users with optional search & status filter
+ * @route   GET /api/admin/users
+ * @access  Private/Admin
+ */
+export const getAllUsers = async (req, res, next) => {
+  try {
+    const { search, status, role } = req.query;
+
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const skip = (page - 1) * limit;
+
+    const query = {};
+
+    if (role && role !== 'all') {
+      query.role = role;
+    } else {
+      query.role = { $in: ['user', 'therapist'] };
+    }
+
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    const filteredTotal = await User.countDocuments(query);
+    const usersDocs = await User.find(query)
+      .select('-passwordHash')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const users = usersDocs.map((u) => ({
+      id: u._id.toString(),
+      _id: u._id.toString(),
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      status: u.status,
+      createdAt: u.createdAt,
+    }));
+
+    const totalPages = Math.ceil(filteredTotal / limit) || 1;
+
+    const totalCount = await User.countDocuments({ role: { $in: ['user', 'therapist'] } });
+    const patientCount = await User.countDocuments({ role: 'user' });
+    const therapistCount = await User.countDocuments({ role: 'therapist' });
+    const activeCount = await User.countDocuments({ role: { $in: ['user', 'therapist'] }, status: 'active' });
+    const inactiveCount = await User.countDocuments({ role: { $in: ['user', 'therapist'] }, status: { $ne: 'active' } });
+
+    res.status(200).json({
+      success: true,
+      count: users.length,
+      pagination: {
+        totalRecords: filteredTotal,
+        totalPages,
+        currentPage: page,
+        limit,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+      },
+      stats: {
+        total: totalCount,
+        patients: patientCount,
+        therapists: therapistCount,
+        active: activeCount,
+        inactive: inactiveCount,
+      },
+      users,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get user profile details by ID
+ * @route   GET /api/admin/users/:id
+ * @access  Private/Admin
+ */
+export const getUserDetails = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const userDoc = await User.findById(id).select('-passwordHash');
+    if (!userDoc) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      user: {
+        id: userDoc._id,
+        _id: userDoc._id,
+        name: userDoc.name,
+        email: userDoc.email,
+        role: userDoc.role,
+        status: userDoc.status,
+        createdAt: userDoc.createdAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Update user status (active, inactive, rejected)
+ * @route   PATCH /api/admin/users/:id/status
+ * @access  Private/Admin
+ */
+export const updateUserStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['active', 'inactive', 'rejected'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status. Allowed: active, inactive, rejected',
+      });
+    }
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    user.status = status;
+    await user.save();
+
+    // Revoke sessions if setting to inactive or rejected
+    if (status !== 'active') {
+      await AuthSession.updateMany(
+        { userId: user._id, revokedAt: null },
+        { $set: { revokedAt: new Date() } }
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `User status updated to ${status}`,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Delete user account
+ * @route   DELETE /api/admin/users/:id
+ * @access  Private/Admin
+ */
+export const deleteUser = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Revoke all active sessions
+    await AuthSession.updateMany(
+      { userId: user._id, revokedAt: null },
+      { $set: { revokedAt: new Date() } }
+    );
+
+    await User.findByIdAndDelete(id);
+
+    res.status(200).json({
+      success: true,
+      message: `User account for ${user.name} has been deleted successfully`,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
