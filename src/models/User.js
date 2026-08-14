@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema(
     },
     passwordHash: {
       type: String,
-      required: [true, 'Password hash is required'],
+      default: '',
       select: false,
     },
     role: {
@@ -49,6 +49,7 @@ const userSchema = new mongoose.Schema(
 
 // Instance method to compare password with passwordHash
 userSchema.methods.comparePassword = async function (candidatePassword) {
+  if (!this.passwordHash) return false;
   return await bcrypt.compare(candidatePassword, this.passwordHash);
 };
 

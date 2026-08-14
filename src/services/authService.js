@@ -104,22 +104,23 @@ export const loginUser = async ({ email, password, userAgent, ipAddress }) => {
     throw error;
   }
 
+  // Restrict therapists from logging in via standard Patient Login
+  if (user.role === 'therapist') {
+    const error = new Error('Invalid email or password');
+    error.statusCode = 401;
+    throw error;
+  }
+
   // Check account status
   if (user.status === 'pending_approval') {
-    const error = new Error('Your registration is pending supervisor approval. You cannot log in until your account is approved.');
+    const error = new Error('Account is pending approval. You cannot log in until approved.');
     error.statusCode = 403;
     throw error;
   }
 
-  if (user.status === 'rejected') {
-    const error = new Error('Your account application was rejected. Please contact support.');
-    error.statusCode = 403;
-    throw error;
-  }
-
-  if (user.status !== 'active') {
-    const error = new Error('Your account has been deactivated. Please contact support.');
-    error.statusCode = 403;
+  if (user.status !== 'active' || !user.passwordHash) {
+    const error = new Error('Invalid email or password');
+    error.statusCode = 401;
     throw error;
   }
 
@@ -132,6 +133,65 @@ export const loginUser = async ({ email, password, userAgent, ipAddress }) => {
   }
 
   // Create new AuthSession
+  const refreshToken = generateRandomToken();
+  const refreshTokenHash = hashToken(refreshToken);
+  const expiresAt = new Date(Date.now() + THIRTY_DAYS_MS);
+
+  await AuthSession.create({
+    userId: user._id,
+    refreshTokenHash,
+    expiresAt,
+    userAgent: userAgent || 'Unknown',
+    ipAddress: ipAddress || 'Unknown',
+  });
+
+  const accessToken = generateAccessToken(user);
+
+  return {
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+    },
+    accessToken,
+    refreshToken,
+  };
+};
+
+/**
+ * Dedicated Therapist Clinical Portal Authentication
+ */
+export const loginTherapist = async ({ email, password, userAgent, ipAddress }) => {
+  const normalizedEmail = email.toLowerCase().trim();
+
+  let user = await User.findOne({ email: normalizedEmail }).select('+passwordHash');
+  if (!user || user.role !== 'therapist') {
+    const error = new Error('Invalid email or password');
+    error.statusCode = 401;
+    throw error;
+  }
+
+  if (user.status === 'pending_approval') {
+    const error = new Error('Your therapist account is pending approval.');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (user.status !== 'active' || !user.passwordHash) {
+    const error = new Error('Invalid email or password');
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const isMatch = await comparePassword(password, user.passwordHash);
+  if (!isMatch) {
+    const error = new Error('Invalid email or password');
+    error.statusCode = 401;
+    throw error;
+  }
+
   const refreshToken = generateRandomToken();
   const refreshTokenHash = hashToken(refreshToken);
   const expiresAt = new Date(Date.now() + THIRTY_DAYS_MS);
@@ -264,5 +324,43 @@ export const getCurrentUser = async (userId) => {
     email: user.email,
     role: user.role,
     status: user.status,
+  };
+};
+
+/**
+ * Create a new AuthSession directly for a user (e.g. after magic link activation)
+ */
+export const createSessionForUser = async ({ userId, userAgent, ipAddress }) => {
+  const user = await User.findById(userId);
+  if (!user) {
+    const error = new Error('User not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const refreshToken = generateRandomToken();
+  const refreshTokenHash = hashToken(refreshToken);
+  const expiresAt = new Date(Date.now() + THIRTY_DAYS_MS);
+
+  await AuthSession.create({
+    userId: user._id,
+    refreshTokenHash,
+    expiresAt,
+    userAgent: userAgent || 'Unknown',
+    ipAddress: ipAddress || 'Unknown',
+  });
+
+  const accessToken = generateAccessToken(user);
+
+  return {
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+    },
+    accessToken,
+    refreshToken,
   };
 };
