@@ -477,9 +477,12 @@ export const deletePsychologist = async (req, res, next) => {
     }
 
     if (psychologist.user) {
-      await User.findByIdAndDelete(psychologist.user);
+      const linkedUser = await User.findById(psychologist.user);
+      if (linkedUser && linkedUser.role === 'therapist') {
+        await User.findByIdAndDelete(psychologist.user);
+      }
     } else {
-      await User.findOneAndDelete({ email: psychologist.email, role: 'therapist' });
+      await User.findOneAndDelete({ email: psychologist.email.toLowerCase(), role: 'therapist' });
     }
 
     await Psychologist.findByIdAndDelete(id);

@@ -247,19 +247,14 @@ export const rejectStaff = async (req, res, next) => {
  */
 export const getAllUsers = async (req, res, next) => {
   try {
-    const { search, status, role } = req.query;
+    const { search, status } = req.query;
 
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 10;
     const skip = (page - 1) * limit;
 
-    const query = {};
-
-    if (role && role !== 'all') {
-      query.role = role;
-    } else {
-      query.role = { $in: ['user', 'therapist'] };
-    }
+    // Force query role = 'user' (Patients only). Therapists are managed in Psychologists console.
+    const query = { role: 'user' };
 
     if (status && status !== 'all') {
       query.status = status;
@@ -291,11 +286,9 @@ export const getAllUsers = async (req, res, next) => {
 
     const totalPages = Math.ceil(filteredTotal / limit) || 1;
 
-    const totalCount = await User.countDocuments({ role: { $in: ['user', 'therapist'] } });
-    const patientCount = await User.countDocuments({ role: 'user' });
-    const therapistCount = await User.countDocuments({ role: 'therapist' });
-    const activeCount = await User.countDocuments({ role: { $in: ['user', 'therapist'] }, status: 'active' });
-    const inactiveCount = await User.countDocuments({ role: { $in: ['user', 'therapist'] }, status: { $ne: 'active' } });
+    const totalCount = await User.countDocuments({ role: 'user' });
+    const activeCount = await User.countDocuments({ role: 'user', status: 'active' });
+    const inactiveCount = await User.countDocuments({ role: 'user', status: { $ne: 'active' } });
 
     res.status(200).json({
       success: true,
@@ -310,8 +303,7 @@ export const getAllUsers = async (req, res, next) => {
       },
       stats: {
         total: totalCount,
-        patients: patientCount,
-        therapists: therapistCount,
+        patients: totalCount,
         active: activeCount,
         inactive: inactiveCount,
       },
@@ -414,6 +406,13 @@ export const deleteUser = async (req, res, next) => {
     const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (user.role !== 'user') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete therapist or admin accounts from User Management. ',
+      });
     }
 
     // Revoke all active sessions
