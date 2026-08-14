@@ -1,4 +1,5 @@
 import User from '../models/User.js';
+import Admin from '../models/Admin.js';
 import AuthSession from '../models/AuthSession.js';
 import { hashPassword, comparePassword } from '../utils/password.js';
 import { generateRandomToken, hashToken } from '../utils/token.js';
@@ -91,8 +92,12 @@ export const registerUser = async ({ name, email, password, role, userAgent, ipA
 export const loginUser = async ({ email, password, userAgent, ipAddress }) => {
   const normalizedEmail = email.toLowerCase().trim();
 
-  // Find user with passwordHash
-  const user = await User.findOne({ email: normalizedEmail }).select('+passwordHash');
+  // Find user in User collection first, then Admin collection
+  let user = await User.findOne({ email: normalizedEmail }).select('+passwordHash');
+  if (!user) {
+    user = await Admin.findOne({ email: normalizedEmail }).select('+passwordHash');
+  }
+
   if (!user) {
     const error = new Error('Invalid email or password');
     error.statusCode = 401;
@@ -193,8 +198,12 @@ export const refreshSession = async ({ refreshToken, userAgent, ipAddress }) => 
     throw error;
   }
 
-  // Check user status
-  const user = await User.findById(session.userId);
+  // Check User collection first, then Admin collection
+  let user = await User.findById(session.userId);
+  if (!user) {
+    user = await Admin.findById(session.userId);
+  }
+
   if (!user || user.status !== 'active') {
     session.revokedAt = new Date();
     await session.save();

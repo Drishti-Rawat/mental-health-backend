@@ -2,6 +2,8 @@ import express from 'express';
 import {
   registerAdmin,
   loginAdmin,
+  refreshAdmin,
+  logoutAdmin,
   getPendingStaff,
   approveStaff,
   rejectStaff,
@@ -14,6 +16,8 @@ const router = express.Router();
 // Public Admin Auth Routes
 router.post('/auth/register', registerAdmin);
 router.post('/auth/login', loginAdmin);
+router.post('/auth/refresh', refreshAdmin);
+router.post('/auth/logout', logoutAdmin);
 
 // Protected Admin Management Routes (Requires authentication + admin/supervisor/superadmin role)
 router.use(protect, admin);

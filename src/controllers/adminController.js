@@ -1,8 +1,9 @@
 import * as adminService from '../services/adminService.js';
+import * as authService from '../services/authService.js';
 import User from '../models/User.js';
 import Admin from '../models/Admin.js';
 import AuthSession from '../models/AuthSession.js';
-import { setRefreshCookie } from '../utils/cookie.js';
+import { setAdminRefreshCookie, clearAdminRefreshCookie } from '../utils/cookie.js';
 
 /**
  * @desc    Submit Admin / Supervisor application (status = pending_approval)
@@ -56,7 +57,7 @@ export const loginAdmin = async (req, res, next) => {
       ipAddress,
     });
 
-    setRefreshCookie(res, refreshToken);
+    setAdminRefreshCookie(res, refreshToken);
 
     res.status(200).json({
       success: true,
@@ -65,6 +66,67 @@ export const loginAdmin = async (req, res, next) => {
       accessToken,
     });
   } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Silent refresh for Admin / Supervisor / Superadmin
+ * @route   POST /api/admin/auth/refresh
+ * @access  Public
+ */
+export const refreshAdmin = async (req, res, next) => {
+  try {
+    const refreshToken = req.cookies?.adminRefreshToken;
+
+    if (!refreshToken) {
+      return res.status(401).json({
+        success: false,
+        message: 'Admin authentication failed: Refresh token missing from cookies',
+      });
+    }
+
+    const userAgent = req.headers['user-agent'];
+    const ipAddress = req.ip || req.connection.remoteAddress;
+
+    const { user: admin, accessToken, refreshToken: newRefreshToken } = await authService.refreshSession({
+      refreshToken,
+      userAgent,
+      ipAddress,
+    });
+
+    setAdminRefreshCookie(res, newRefreshToken);
+
+    res.status(200).json({
+      success: true,
+      message: 'Admin token refreshed successfully',
+      admin,
+      accessToken,
+    });
+  } catch (error) {
+    clearAdminRefreshCookie(res);
+    next(error);
+  }
+};
+
+/**
+ * @desc    Logout Admin session
+ * @route   POST /api/admin/auth/logout
+ * @access  Public / Protected
+ */
+export const logoutAdmin = async (req, res, next) => {
+  try {
+    const refreshToken = req.cookies?.adminRefreshToken;
+    if (refreshToken) {
+      await authService.revokeSession(refreshToken);
+    }
+    clearAdminRefreshCookie(res);
+    res.status(200).json({
+      success: true,
+      message: 'Admin logged out successfully',
+    });
+  } catch (error) {
+    clearAdminRefreshCookie(res);
     next(error);
   }
 };
