@@ -17,6 +17,27 @@ export const getAllPsychologists = async (req, res, next) => {
     const limit = parseInt(req.query.limit, 10) || 10;
     const skip = (page - 1) * limit;
 
+    // Auto-sync missing User entries for existing Psychologist records
+    const unSynced = await Psychologist.find({ $or: [{ user: null }, { user: { $exists: false } }] });
+    if (unSynced.length > 0) {
+      for (const p of unSynced) {
+        let u = await User.findOne({ email: p.email.toLowerCase() });
+        if (!u) {
+          u = await User.create({
+            name: p.name,
+            email: p.email.toLowerCase(),
+            role: 'therapist',
+            status: p.status === 'approved' || p.status === 'active' ? 'active' : p.status || 'pending_approval',
+          });
+        } else if (u.role !== 'therapist') {
+          u.role = 'therapist';
+          await u.save();
+        }
+        p.user = u._id;
+        await p.save();
+      }
+    }
+
     const query = {};
 
     if (status && status !== 'all') {
@@ -142,11 +163,14 @@ export const applyPsychologist = async (req, res, next) => {
       });
     }
 
-    const existing = await Psychologist.findOne({ email: email.toLowerCase() });
-    if (existing) {
+    // Strict duplicate check: Check both Psychologist and User collections regardless of status
+    const existingPsychologist = await Psychologist.findOne({ email: email.toLowerCase() });
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+
+    if (existingPsychologist || existingUser) {
       return res.status(400).json({
         success: false,
-        message: 'An application or record with this email address already exists',
+        message: 'An account or application with this email address already exists.',
       });
     }
 
@@ -162,6 +186,16 @@ export const applyPsychologist = async (req, res, next) => {
       ? languages.split(',').map((l) => l.trim()).filter(Boolean)
       : [];
 
+    let userAccount = await User.findOne({ email: email.toLowerCase() });
+    if (!userAccount) {
+      userAccount = await User.create({
+        name,
+        email: email.toLowerCase(),
+        role: 'therapist',
+        status: 'pending_approval',
+      });
+    }
+
     const psychologist = await Psychologist.create({
       name,
       email: email.toLowerCase(),
@@ -174,6 +208,7 @@ export const applyPsychologist = async (req, res, next) => {
       bio: bio || '',
       languages: parsedLanguages,
       status: 'pending_approval',
+      user: userAccount._id,
     });
 
     res.status(201).json({
@@ -203,10 +238,25 @@ export const approvePsychologist = async (req, res, next) => {
       });
     }
 
+    let userAccount = await User.findOne({ email: psychologist.email.toLowerCase() });
+    if (!userAccount) {
+      userAccount = await User.create({
+        name: psychologist.name,
+        email: psychologist.email.toLowerCase(),
+        role: 'therapist',
+        status: 'approved',
+      });
+    } else {
+      userAccount.role = 'therapist';
+      userAccount.status = 'approved';
+      await userAccount.save();
+    }
+
     // Generate 32-byte hex crypto token (expires in 7 days)
     const rawToken = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
+    psychologist.user = userAccount._id;
     psychologist.inviteToken = rawToken;
     psychologist.inviteTokenExpires = expiresAt;
     psychologist.status = 'approved';
@@ -304,12 +354,14 @@ export const createPsychologist = async (req, res, next) => {
       });
     }
 
-    // Check for existing psychologist record with this email
+    // Strict duplicate check: Check both Psychologist and User collections regardless of status
     const existingPsychologist = await Psychologist.findOne({ email: email.toLowerCase() });
-    if (existingPsychologist) {
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+
+    if (existingPsychologist || existingUser) {
       return res.status(400).json({
         success: false,
-        message: 'A psychologist record with this email already exists',
+        message: 'An account or application with this email address already exists.',
       });
     }
 
@@ -329,7 +381,19 @@ export const createPsychologist = async (req, res, next) => {
     const rawToken = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    const userAccount = await User.findOne({ email: email.toLowerCase() });
+    let userAccount = await User.findOne({ email: email.toLowerCase() });
+    if (!userAccount) {
+      userAccount = await User.create({
+        name,
+        email: email.toLowerCase(),
+        role: 'therapist',
+        status: status === 'active' || status === 'approved' ? 'active' : 'pending_approval',
+      });
+    } else {
+      userAccount.role = 'therapist';
+      userAccount.status = status === 'active' || status === 'approved' ? 'active' : 'pending_approval';
+      await userAccount.save();
+    }
 
     const psychologist = await Psychologist.create({
       name,
@@ -347,7 +411,7 @@ export const createPsychologist = async (req, res, next) => {
       status: status || 'approved',
       inviteToken: rawToken,
       inviteTokenExpires: expiresAt,
-      user: userAccount ? userAccount._id : null,
+      user: userAccount._id,
     });
 
     const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';

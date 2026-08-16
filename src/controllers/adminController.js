@@ -2,7 +2,10 @@ import * as adminService from '../services/adminService.js';
 import * as authService from '../services/authService.js';
 import User from '../models/User.js';
 import Admin from '../models/Admin.js';
+import Psychologist from '../models/Psychologist.js';
 import AuthSession from '../models/AuthSession.js';
+import { sendTherapistInviteEmail } from '../services/emailService.js';
+import crypto from 'crypto';
 import { setAdminRefreshCookie, clearAdminRefreshCookie } from '../utils/cookie.js';
 
 /**
@@ -131,114 +134,7 @@ export const logoutAdmin = async (req, res, next) => {
   }
 };
 
-/**
- * @desc    Get pending staff applications (Therapists, Admins, Supervisors)
- * @route   GET /api/admin/staff/pending
- * @access  Private/Admin
- */
-export const getPendingStaff = async (req, res, next) => {
-  try {
-    const pendingUsers = await User.find({ status: 'pending_approval' }).select('-passwordHash');
-    const pendingAdmins = await Admin.find({ status: 'pending_approval' }).select('-passwordHash');
 
-    res.status(200).json({
-      success: true,
-      count: pendingUsers.length + pendingAdmins.length,
-      pendingTherapists: pendingUsers,
-      pendingAdmins,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * @desc    Approve a pending staff or admin account
- * @route   PATCH /api/admin/staff/:id/approve
- * @access  Private/Admin
- */
-export const approveStaff = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-
-    // Check Admin collection first
-    let account = await Admin.findById(id);
-    let type = 'Admin';
-
-    if (account) {
-      account.status = 'active';
-      account.approvedBy = req.user.id;
-      await account.save();
-    } else {
-      account = await User.findById(id);
-      type = 'User';
-      if (!account) {
-        return res.status(404).json({ success: false, message: 'Account not found' });
-      }
-      account.status = 'active';
-      await account.save();
-    }
-
-    res.status(200).json({
-      success: true,
-      message: `Successfully approved ${account.role} account for ${account.name}`,
-      account: {
-        id: account._id,
-        name: account.name,
-        email: account.email,
-        role: account.role,
-        status: account.status,
-        type,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * @desc    Reject a pending staff or admin account
- * @route   PATCH /api/admin/staff/:id/reject
- * @access  Private/Admin
- */
-export const rejectStaff = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-
-    let account = await Admin.findById(id);
-    if (account) {
-      account.status = 'rejected';
-      await account.save();
-    } else {
-      account = await User.findById(id);
-      if (!account) {
-        return res.status(404).json({ success: false, message: 'Account not found' });
-      }
-      account.status = 'rejected';
-      await account.save();
-    }
-
-    // Revoke any active sessions
-    await AuthSession.updateMany(
-      { userId: account._id, revokedAt: null },
-      { $set: { revokedAt: new Date() } }
-    );
-
-    res.status(200).json({
-      success: true,
-      message: `Account for ${account.name} rejected`,
-      account: {
-        id: account._id,
-        name: account.name,
-        email: account.email,
-        role: account.role,
-        status: account.status,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
 
 /**
  * @desc    Get all registered users with optional search & status filter
@@ -253,8 +149,13 @@ export const getAllUsers = async (req, res, next) => {
     const limit = parseInt(req.query.limit, 10) || 10;
     const skip = (page - 1) * limit;
 
-    // Force query role = 'user' (Patients only). Therapists are managed in Psychologists console.
-    const query = { role: 'user' };
+    // Role filter handling (if role is provided and not 'all', use it; default to 'user' if omitted)
+    const query = {};
+    if (req.query.role && req.query.role !== 'all') {
+      query.role = req.query.role;
+    } else if (!req.query.role) {
+      query.role = 'user';
+    }
 
     if (status && status !== 'all') {
       query.status = status;
@@ -286,9 +187,12 @@ export const getAllUsers = async (req, res, next) => {
 
     const totalPages = Math.ceil(filteredTotal / limit) || 1;
 
-    const totalCount = await User.countDocuments({ role: 'user' });
-    const activeCount = await User.countDocuments({ role: 'user', status: 'active' });
-    const inactiveCount = await User.countDocuments({ role: 'user', status: { $ne: 'active' } });
+    // System stats breakdown strictly from User model
+    const totalUsersCount = await User.countDocuments({});
+    const patientsCount = await User.countDocuments({ role: 'user' });
+    const therapistsCount = await User.countDocuments({ role: 'therapist' });
+    const activeCount = await User.countDocuments({ status: 'active' });
+    const inactiveCount = await User.countDocuments({ status: { $ne: 'active' } });
 
     res.status(200).json({
       success: true,
@@ -302,8 +206,9 @@ export const getAllUsers = async (req, res, next) => {
         hasPrevPage: page > 1,
       },
       stats: {
-        total: totalCount,
-        patients: totalCount,
+        total: totalUsersCount,
+        patients: patientsCount,
+        therapists: therapistsCount,
         active: activeCount,
         inactive: inactiveCount,
       },
@@ -369,6 +274,14 @@ export const updateUserStatus = async (req, res, next) => {
 
     user.status = status;
     await user.save();
+
+    // Sync status with Psychologist model if user is a therapist
+    if (user.role === 'therapist') {
+      await Psychologist.findOneAndUpdate(
+        { email: user.email.toLowerCase() },
+        { status }
+      );
+    }
 
     // Revoke sessions if setting to inactive or rejected
     if (status !== 'active') {

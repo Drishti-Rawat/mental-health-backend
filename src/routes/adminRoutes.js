@@ -4,9 +4,6 @@ import {
   loginAdmin,
   refreshAdmin,
   logoutAdmin,
-  getPendingStaff,
-  approveStaff,
-  rejectStaff,
   getAllUsers,
   getUserDetails,
   updateUserStatus,
@@ -25,10 +22,6 @@ router.post('/auth/logout', logoutAdmin);
 
 // Protected Admin Management Routes (Requires authentication + admin/supervisor/superadmin role)
 router.use(protect, admin);
-
-router.get('/staff/pending', getPendingStaff);
-router.patch('/staff/:id/approve', approveStaff);
-router.patch('/staff/:id/reject', rejectStaff);
 
 // User Management Routes
 router.get('/users', getAllUsers);
