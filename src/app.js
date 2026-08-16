@@ -4,6 +4,9 @@ import cookieParser from 'cookie-parser';
 import authRoutes from './routes/authRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import psychologistRoutes from './routes/psychologistRoutes.js';
+import uploadRoutes from './routes/uploadRoutes.js';
+import blogRoutes from './routes/blogRoutes.js';
+import { apiLimiter } from './middleware/rateLimitMiddleware.js';
 import { notFound, errorHandler } from './middleware/errorMiddleware.js';
 
 const app = express();
@@ -35,6 +38,9 @@ app.use(
   })
 );
 
+// Global API Rate Limiter
+app.use('/api', apiLimiter);
+
 // Health Check Route
 app.get('/api/health', (req, res) => {
   res.status(200).json({
@@ -48,6 +54,8 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/psychologists', psychologistRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/blogs', blogRoutes);
 
 // Error Handling Middlewares
 app.use(notFound);

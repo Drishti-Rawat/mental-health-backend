@@ -11,12 +11,13 @@ import {
 } from '../controllers/adminController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { admin } from '../middleware/adminMiddleware.js';
+import { authLimiter } from '../middleware/rateLimitMiddleware.js';
 
 const router = express.Router();
 
 // Public Admin Auth Routes
-router.post('/auth/register', registerAdmin);
-router.post('/auth/login', loginAdmin);
+router.post('/auth/register', authLimiter, registerAdmin);
+router.post('/auth/login', authLimiter, loginAdmin);
 router.post('/auth/refresh', refreshAdmin);
 router.post('/auth/logout', logoutAdmin);
 

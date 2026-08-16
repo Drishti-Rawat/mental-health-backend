@@ -12,6 +12,7 @@ import {
 } from '../controllers/psychologistController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { admin } from '../middleware/adminMiddleware.js';
+import { authLimiter } from '../middleware/rateLimitMiddleware.js';
 
 const router = express.Router();
 
@@ -19,7 +20,7 @@ const router = express.Router();
 router.get('/', getAllPsychologists);
 
 // Public Self-Registration Application Route
-router.post('/apply', applyPsychologist);
+router.post('/apply', authLimiter, applyPsychologist);
 
 // Therapist Profile Route (Must be before /:id)
 router.get('/me', protect, getMyPsychologistProfile);
