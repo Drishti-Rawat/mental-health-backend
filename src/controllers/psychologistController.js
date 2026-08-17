@@ -58,13 +58,40 @@ export const getAllPsychologists = async (req, res, next) => {
       ];
     }
 
+    // Hard cap for unauthenticated public requests: Maximum 10 total items allowed across all pages
+    const isPublic = !req.user;
+    let effectiveSkip = skip;
+    let effectiveLimit = limit;
+
+    if (isPublic) {
+      if (skip >= 10) {
+        return res.status(200).json({
+          success: true,
+          count: 0,
+          pagination: {
+            totalRecords: 10,
+            totalPages: 2,
+            currentPage: page,
+            limit,
+            hasNextPage: false,
+            hasPrevPage: page > 1,
+          },
+          stats: { total: 10 },
+          psychologists: [],
+        });
+      }
+      effectiveLimit = Math.min(limit, 10 - skip);
+    }
+
     const totalRecords = await Psychologist.countDocuments(query);
+    const effectiveTotalRecords = isPublic ? Math.min(totalRecords, 10) : totalRecords;
+
     const psychologistsDocs = await Psychologist.find(query)
       .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+      .skip(effectiveSkip)
+      .limit(effectiveLimit);
 
-    const totalPages = Math.ceil(totalRecords / limit) || 1;
+    const totalPages = Math.ceil(effectiveTotalRecords / limit) || 1;
 
     // Calculate aggregated summary stats for admin dashboard
     const totalCount = await Psychologist.countDocuments({});

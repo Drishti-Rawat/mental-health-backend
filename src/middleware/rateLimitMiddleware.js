@@ -44,3 +44,18 @@ export const uploadLimiter = rateLimit({
     message: 'Image upload limit exceeded. You can upload up to 20 images per 15 minutes.',
   },
 });
+
+/**
+ * Public Psychologist Directory Limiter
+ * 60 requests per 15 minutes per IP
+ */
+export const publicPsychologistLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 60, // Limit each IP to 60 requests per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many requests to psychologist directory. Please try again after 15 minutes.',
+  },
+});
