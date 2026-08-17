@@ -36,8 +36,8 @@ const adminSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: {
-        values: ['pending_approval', 'active', 'inactive', 'rejected'],
-        message: '{VALUE} is not a valid status. Allowed: pending_approval, active, inactive, rejected',
+        values: ['pending_approval', 'approved', 'active', 'inactive', 'rejected'],
+        message: '{VALUE} is not a valid status. Allowed: pending_approval, approved, active, inactive, rejected',
       },
       default: 'pending_approval',
     },

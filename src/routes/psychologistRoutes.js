@@ -12,12 +12,12 @@ import {
 } from '../controllers/psychologistController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { admin } from '../middleware/adminMiddleware.js';
-import { authLimiter, publicPsychologistLimiter } from '../middleware/rateLimitMiddleware.js';
+import { authLimiter } from '../middleware/rateLimitMiddleware.js';
 
 const router = express.Router();
 
-// Public Routes with Rate Limiting
-router.get('/', publicPsychologistLimiter, getAllPsychologists);
+// Public Routes
+router.get('/', getAllPsychologists);
 
 // Public Self-Registration Application Route
 router.post('/apply', authLimiter, applyPsychologist);

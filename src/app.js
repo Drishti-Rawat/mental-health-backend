@@ -6,7 +6,6 @@ import adminRoutes from './routes/adminRoutes.js';
 import psychologistRoutes from './routes/psychologistRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 import blogRoutes from './routes/blogRoutes.js';
-import { apiLimiter } from './middleware/rateLimitMiddleware.js';
 import { notFound, errorHandler } from './middleware/errorMiddleware.js';
 
 const app = express();
@@ -37,9 +36,6 @@ app.use(
     credentials: true,
   })
 );
-
-// Global API Rate Limiter
-app.use('/api', apiLimiter);
 
 // Health Check Route
 app.get('/api/health', (req, res) => {
