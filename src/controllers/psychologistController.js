@@ -615,3 +615,121 @@ export const getMyPsychologistProfile = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * @desc    Update therapist's own psychologist profile (Email, name, fee, specialties, bio, etc.)
+ * @route   PUT /api/psychologists/me
+ * @access  Private/Therapist
+ */
+export const updateMyPsychologistProfile = async (req, res, next) => {
+  try {
+    let psychologist = await Psychologist.findOne({ user: req.user.id });
+    if (!psychologist) {
+      psychologist = await Psychologist.findOne({ email: req.user.email });
+    }
+
+    if (!psychologist) {
+      return res.status(404).json({
+        success: false,
+        message: 'Psychologist profile not found for this user',
+      });
+    }
+
+    const {
+      name,
+      email,
+      phone,
+      title,
+      specialties,
+      qualifications,
+      experienceYears,
+      consultationFee,
+      bio,
+      languages,
+      availableSlots,
+    } = req.body;
+
+    // Validate email format if provided
+    if (email) {
+      const emailRegex = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Please provide a valid email address format (e.g. name@domain.com)',
+        });
+      }
+
+      // Check if email belongs to another existing psychologist
+      const existingOther = await Psychologist.findOne({
+        email: email.toLowerCase(),
+        _id: { $ne: psychologist._id },
+      });
+      if (existingOther) {
+        return res.status(400).json({
+          success: false,
+          message: 'This email address is already in use by another account.',
+        });
+      }
+      psychologist.email = email.toLowerCase();
+    }
+
+    if (name) psychologist.name = name;
+    if (phone !== undefined) psychologist.phone = phone;
+    if (title) psychologist.title = title;
+    if (qualifications !== undefined) psychologist.qualifications = qualifications;
+    if (experienceYears !== undefined) psychologist.experienceYears = Number(experienceYears) || 0;
+    if (consultationFee !== undefined) {
+      if (Number(consultationFee) < 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Consultation fee cannot be negative',
+        });
+      }
+      psychologist.consultationFee = Number(consultationFee);
+    }
+
+    if (specialties !== undefined) {
+      psychologist.specialties = Array.isArray(specialties)
+        ? specialties
+        : typeof specialties === 'string'
+        ? specialties.split(',').map((s) => s.trim()).filter(Boolean)
+        : [];
+    }
+
+    if (languages !== undefined) {
+      psychologist.languages = Array.isArray(languages)
+        ? languages
+        : typeof languages === 'string'
+        ? languages.split(',').map((l) => l.trim()).filter(Boolean)
+        : [];
+    }
+
+    if (availableSlots !== undefined) {
+      psychologist.availableSlots = Array.isArray(availableSlots)
+        ? availableSlots.filter(Boolean)
+        : [];
+    }
+
+    if (bio !== undefined) psychologist.bio = bio;
+
+    await psychologist.save();
+
+    // Sync User record if linked
+    if (psychologist.user) {
+      const linkedUser = await User.findById(psychologist.user);
+      if (linkedUser) {
+        if (name) linkedUser.name = name;
+        if (email) linkedUser.email = email.toLowerCase();
+        await linkedUser.save();
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Therapist profile updated successfully',
+      psychologist,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

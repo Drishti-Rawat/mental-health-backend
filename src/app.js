@@ -6,6 +6,7 @@ import adminRoutes from './routes/adminRoutes.js';
 import psychologistRoutes from './routes/psychologistRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 import blogRoutes from './routes/blogRoutes.js';
+import bookingRoutes from './routes/bookingRoutes.js';
 import { notFound, errorHandler } from './middleware/errorMiddleware.js';
 
 const app = express();
@@ -52,6 +53,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/psychologists', psychologistRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/blogs', blogRoutes);
+app.use('/api/bookings', bookingRoutes);
 
 // Error Handling Middlewares
 app.use(notFound);

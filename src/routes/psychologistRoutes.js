@@ -6,6 +6,7 @@ import {
   updatePsychologist,
   deletePsychologist,
   getMyPsychologistProfile,
+  updateMyPsychologistProfile,
   applyPsychologist,
   approvePsychologist,
   rejectPsychologist,
@@ -22,8 +23,9 @@ router.get('/', getAllPsychologists);
 // Public Self-Registration Application Route
 router.post('/apply', authLimiter, applyPsychologist);
 
-// Therapist Profile Route (Must be before /:id)
+// Therapist Profile Routes (Must be before /:id)
 router.get('/me', protect, getMyPsychologistProfile);
+router.put('/me', protect, updateMyPsychologistProfile);
 
 router.get('/:id', getPsychologistById);
 

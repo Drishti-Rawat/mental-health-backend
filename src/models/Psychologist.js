@@ -65,6 +65,16 @@ const psychologistSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    availableSlots: {
+      type: [String],
+      default: [
+        '09:00 AM - 10:00 AM',
+        '10:30 AM - 11:30 AM',
+        '02:00 PM - 03:00 PM',
+        '04:30 PM - 05:30 PM',
+        '06:00 PM - 07:00 PM',
+      ],
+    },
     rating: {
       type: Number,
       default: 4.8,
