@@ -647,30 +647,15 @@ export const updateMyPsychologistProfile = async (req, res, next) => {
       bio,
       languages,
       availableSlots,
+      image,
     } = req.body;
 
-    // Validate email format if provided
-    if (email) {
-      const emailRegex = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
-      if (!emailRegex.test(email)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Please provide a valid email address format (e.g. name@domain.com)',
-        });
-      }
-
-      // Check if email belongs to another existing psychologist
-      const existingOther = await Psychologist.findOne({
-        email: email.toLowerCase(),
-        _id: { $ne: psychologist._id },
+    // Reject email modification attempts
+    if (email && email.toLowerCase() !== psychologist.email.toLowerCase()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email address is locked to your account credentials and cannot be changed.',
       });
-      if (existingOther) {
-        return res.status(400).json({
-          success: false,
-          message: 'This email address is already in use by another account.',
-        });
-      }
-      psychologist.email = email.toLowerCase();
     }
 
     if (name) psychologist.name = name;
@@ -711,6 +696,7 @@ export const updateMyPsychologistProfile = async (req, res, next) => {
     }
 
     if (bio !== undefined) psychologist.bio = bio;
+    if (image !== undefined) psychologist.image = image;
 
     await psychologist.save();
 
