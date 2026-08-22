@@ -11,10 +11,10 @@ import crypto from 'crypto';
  */
 export const getAllPsychologists = async (req, res, next) => {
   try {
-    const { search, status, specialty } = req.query;
+    const { search, status, specialty, minExperience, maxFee, language, sort } = req.query;
 
     const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 10;
+    const limit = parseInt(req.query.limit, 10) || 9;
     const skip = (page - 1) * limit;
 
     // Auto-sync missing User entries for existing Psychologist records
@@ -44,8 +44,26 @@ export const getAllPsychologists = async (req, res, next) => {
       query.status = status;
     }
 
-    if (specialty && specialty !== 'all') {
-      query.specialties = { $in: [new RegExp(specialty, 'i')] };
+    if (specialty && specialty !== 'all' && specialty !== 'All Specializations') {
+      const keywords = specialty.split(/[\s&,/]+/).filter((k) => k.length > 2);
+      if (keywords.length > 0) {
+        const regexes = keywords.map((k) => new RegExp(k, 'i'));
+        query.specialties = { $in: regexes };
+      } else {
+        query.specialties = { $in: [new RegExp(specialty, 'i')] };
+      }
+    }
+
+    if (minExperience) {
+      query.experienceYears = { $gte: Number(minExperience) };
+    }
+
+    if (maxFee && Number(maxFee) < 50000) {
+      query.consultationFee = { $lte: Number(maxFee) };
+    }
+
+    if (language && language !== 'all' && language !== 'All Languages' && language !== 'Language') {
+      query.languages = { $in: [new RegExp(language, 'i')] };
     }
 
     if (search) {
@@ -56,6 +74,15 @@ export const getAllPsychologists = async (req, res, next) => {
         { qualifications: { $regex: search, $options: 'i' } },
         { specialties: { $in: [new RegExp(search, 'i')] } },
       ];
+    }
+
+    let sortQuery = { createdAt: -1 };
+    if (sort === 'experience_desc' || sort === 'Experience: High to Low') {
+      sortQuery = { experienceYears: -1 };
+    } else if (sort === 'experience_asc' || sort === 'Experience: Low to High') {
+      sortQuery = { experienceYears: 1 };
+    } else if (sort === 'rating_desc' || sort === 'Rating: High to Low') {
+      sortQuery = { rating: -1 };
     }
 
     // Hard cap for unauthenticated public requests: Maximum 10 total items allowed across all pages
@@ -70,7 +97,7 @@ export const getAllPsychologists = async (req, res, next) => {
           count: 0,
           pagination: {
             totalRecords: 10,
-            totalPages: 2,
+            totalPages: Math.ceil(10 / limit),
             currentPage: page,
             limit,
             hasNextPage: false,
@@ -87,7 +114,7 @@ export const getAllPsychologists = async (req, res, next) => {
     const effectiveTotalRecords = isPublic ? Math.min(totalRecords, 10) : totalRecords;
 
     const psychologistsDocs = await Psychologist.find(query)
-      .sort({ createdAt: -1 })
+      .sort(sortQuery)
       .skip(effectiveSkip)
       .limit(effectiveLimit);
 

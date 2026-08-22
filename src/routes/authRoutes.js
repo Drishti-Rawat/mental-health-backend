@@ -6,6 +6,7 @@ import {
   refresh,
   logout,
   me,
+  updateProfile,
   verifyInviteToken,
   setPasswordWithToken,
 } from '../controllers/authController.js';
@@ -26,5 +27,6 @@ router.post('/set-password-with-token', authLimiter, setPasswordWithToken);
 
 // Protected routes
 router.get('/me', protect, me);
+router.put('/profile', protect, updateProfile);
 
 export default router;

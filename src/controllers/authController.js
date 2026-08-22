@@ -382,3 +382,21 @@ export const setPasswordWithToken = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * @desc    Update patient profile details
+ * @route   PUT /api/auth/profile
+ * @access  Protected
+ */
+export const updateProfile = async (req, res, next) => {
+  try {
+    const updatedUser = await authService.updatePatientProfile(req.user.id, req.body);
+    res.status(200).json({
+      success: true,
+      message: 'Profile details updated successfully',
+      user: updatedUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

@@ -1,6 +1,7 @@
 import User from '../models/User.js';
 import Admin from '../models/Admin.js';
 import AuthSession from '../models/AuthSession.js';
+import Patient from '../models/Patient.js';
 import { hashPassword, comparePassword } from '../utils/password.js';
 import { generateRandomToken, hashToken } from '../utils/token.js';
 import { generateAccessToken } from '../utils/jwt.js';
@@ -71,15 +72,10 @@ export const registerUser = async ({ name, email, password, role, userAgent, ipA
   });
 
   const accessToken = generateAccessToken(user);
+  const userObj = await buildUserResponse(user);
 
   return {
-    user: {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      status: user.status,
-    },
+    user: userObj,
     isPendingApproval: false,
     accessToken,
     refreshToken,
@@ -146,15 +142,10 @@ export const loginUser = async ({ email, password, userAgent, ipAddress }) => {
   });
 
   const accessToken = generateAccessToken(user);
+  const userObj = await buildUserResponse(user);
 
   return {
-    user: {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      status: user.status,
-    },
+    user: userObj,
     accessToken,
     refreshToken,
   };
@@ -281,15 +272,10 @@ export const refreshSession = async ({ refreshToken, userAgent, ipAddress }) => 
   await session.save();
 
   const newAccessToken = generateAccessToken(user);
+  const userObj = await buildUserResponse(user);
 
   return {
-    user: {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      status: user.status,
-    },
+    user: userObj,
     accessToken: newAccessToken,
     refreshToken: newRefreshToken,
   };
@@ -309,6 +295,47 @@ export const logoutSession = async ({ refreshToken }) => {
 
 
 /**
+ * Helper to build consistent user response with patient profile
+ */
+export const buildUserResponse = async (user) => {
+  let patientProfile = null;
+  if (user.role === 'user') {
+    patientProfile = await Patient.findOne({ user: user._id });
+  }
+
+  return {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+    patientProfile: patientProfile
+      ? {
+          phone: patientProfile.phone || '',
+          dob: patientProfile.dob || '',
+          gender: patientProfile.gender || 'Not specified',
+          avatarImage: patientProfile.avatarImage || '',
+          emergencyContact: {
+            name: patientProfile.emergencyContact?.name || '',
+            phone: patientProfile.emergencyContact?.phone || '',
+          },
+          therapyPreferences: {
+            preferredFormat: patientProfile.therapyPreferences?.preferredFormat || 'Video Consultation',
+            selectedGoals: patientProfile.therapyPreferences?.selectedGoals || [],
+            preferredTime: patientProfile.therapyPreferences?.preferredTime || 'Not specified',
+          },
+          notifications: {
+            sessionReminders: patientProfile.notifications?.sessionReminders ?? true,
+            emailAlerts: patientProfile.notifications?.emailAlerts ?? true,
+            therapistUpdates: patientProfile.notifications?.therapistUpdates ?? true,
+            monthlyDigest: patientProfile.notifications?.monthlyDigest ?? false,
+          },
+        }
+      : null,
+  };
+};
+
+/**
  * Get current authenticated user profile
  */
 export const getCurrentUser = async (userId) => {
@@ -318,13 +345,45 @@ export const getCurrentUser = async (userId) => {
     error.statusCode = 404;
     throw error;
   }
-  return {
-    id: user._id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    status: user.status,
+
+  return await buildUserResponse(user);
+};
+
+/**
+ * Update patient profile details in Patient collection
+ */
+export const updatePatientProfile = async (userId, updateData) => {
+  const user = await User.findById(userId);
+  if (!user || user.status !== 'active') {
+    const error = new Error('User not found or inactive');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (updateData.name && updateData.name.trim()) {
+    user.name = updateData.name.trim();
+    await user.save();
+  }
+
+  const patientFields = {
+    phone: updateData.phone !== undefined ? updateData.phone : undefined,
+    dob: updateData.dob !== undefined ? updateData.dob : undefined,
+    gender: updateData.gender !== undefined ? updateData.gender : undefined,
+    avatarImage: updateData.avatarImage !== undefined ? updateData.avatarImage : undefined,
+    emergencyContact: updateData.emergencyContact !== undefined ? updateData.emergencyContact : undefined,
+    therapyPreferences: updateData.therapyPreferences !== undefined ? updateData.therapyPreferences : undefined,
+    notifications: updateData.notifications !== undefined ? updateData.notifications : undefined,
   };
+
+  Object.keys(patientFields).forEach((key) => patientFields[key] === undefined && delete patientFields[key]);
+
+  await Patient.findOneAndUpdate(
+    { user: user._id },
+    { $set: patientFields },
+    { new: true, upsert: true, runValidators: true }
+  );
+
+  return await buildUserResponse(user);
 };
 
 /**
