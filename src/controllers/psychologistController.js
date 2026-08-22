@@ -746,3 +746,37 @@ export const updateMyPsychologistProfile = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * @desc    Get all distinct specialties across approved psychologists
+ * @route   GET /api/psychologists/specialties
+ * @access  Public
+ */
+export const getDistinctSpecialties = async (req, res, next) => {
+  try {
+    const rawSpecialties = await Psychologist.distinct('specialties', {
+      status: { $in: ['approved', 'active'] },
+    });
+
+    const presetDefaults = [
+      'Anxiety & Stress',
+      'Depression & Mood',
+      'Relationship Counselling',
+      'Child & Adolescent Therapy',
+      'Trauma & PTSD',
+      'Career & Growth',
+      'Self Care & Wellbeing',
+      'CBT & Mindfulness',
+    ];
+
+    const combinedSet = new Set([...presetDefaults, ...rawSpecialties.filter(Boolean)]);
+    const specialties = ['All Specializations', ...Array.from(combinedSet)];
+
+    res.status(200).json({
+      success: true,
+      specialties,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

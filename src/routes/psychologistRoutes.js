@@ -10,6 +10,7 @@ import {
   applyPsychologist,
   approvePsychologist,
   rejectPsychologist,
+  getDistinctSpecialties,
 } from '../controllers/psychologistController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { admin } from '../middleware/adminMiddleware.js';
@@ -19,6 +20,7 @@ const router = express.Router();
 
 // Public Routes
 router.get('/', getAllPsychologists);
+router.get('/specialties', getDistinctSpecialties);
 
 // Public Self-Registration Application Route
 router.post('/apply', authLimiter, applyPsychologist);
