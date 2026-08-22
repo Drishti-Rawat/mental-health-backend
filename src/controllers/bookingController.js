@@ -4,6 +4,37 @@ import Psychologist from '../models/Psychologist.js';
 import User from '../models/User.js';
 
 /**
+ * Helper to check if a date + time slot is in the past
+ */
+export const isSlotInPast = (dateStr, slotStr) => {
+  if (!dateStr || !slotStr) return false;
+
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+
+  if (dateStr < todayStr) return true;
+  if (dateStr > todayStr) return false;
+
+  const match = slotStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (!match) return false;
+
+  let [, hoursStr, minsStr, ampm] = match;
+  let hours = parseInt(hoursStr, 10);
+  const minutes = parseInt(minsStr, 10);
+
+  if (ampm) {
+    ampm = ampm.toUpperCase();
+    if (ampm === 'PM' && hours < 12) hours += 12;
+    if (ampm === 'AM' && hours === 12) hours = 0;
+  }
+
+  const slotDate = new Date(now);
+  slotDate.setHours(hours, minutes, 0, 0);
+
+  return slotDate <= now;
+};
+
+/**
  * @desc    Create a new session booking
  * @route   POST /api/bookings
  * @access  Public / Patient
@@ -26,6 +57,14 @@ export const createBooking = async (req, res, next) => {
       return res.status(400).json({
         success: false,
         message: 'Therapist ID, date, time slot, and consultation topic are required.',
+      });
+    }
+
+    // Check if date/time slot has already passed
+    if (isSlotInPast(date, slot)) {
+      return res.status(400).json({
+        success: false,
+        message: `The time slot "${slot}" on ${date} has already passed. Please select an upcoming slot.`,
       });
     }
 
@@ -81,35 +120,39 @@ export const createBooking = async (req, res, next) => {
 };
 
 /**
- * @desc    Get bookings for logged-in user or by email query
+ * @desc    Get bookings for logged-in user (patient or therapist)
  * @route   GET /api/bookings/my-bookings
- * @access  Public / Protected
+ * @access  Private / Protected
  */
 export const getMyBookings = async (req, res, next) => {
   try {
-    const userEmail = req.query.email || req.user?.email;
     const userId = req.user?.id;
+    const userEmail = req.user?.email?.toLowerCase();
     const role = req.user?.role;
 
     let query = {};
 
     if (role === 'therapist') {
-      // Find therapist profile to get ID
-      const psychProfile = await Psychologist.findOne({ $or: [{ user: userId }, { email: userEmail?.toLowerCase() }] });
+      // Find therapist profile linked to this authenticated user
+      const psychProfile = await Psychologist.findOne({
+        $or: [{ user: userId }, { email: userEmail }],
+      });
+
       const pId = psychProfile ? psychProfile._id.toString() : userId;
 
+      // Strict therapist data isolation: Only return bookings assigned to this specific therapist
       query = {
         $or: [
           { therapistId: pId },
           { therapistId: userId },
           { therapist: userId },
-          { therapistName: { $regex: req.user?.name || '', $options: 'i' } },
         ],
       };
-    } else if (userEmail) {
+    } else {
+      // Patient user: Only return bookings for this specific patient
       query = {
         $or: [
-          { patientEmail: userEmail.toLowerCase() },
+          { patientEmail: userEmail },
           { patient: userId },
         ],
       };
@@ -150,6 +193,30 @@ export const updateBookingStatus = async (req, res, next) => {
         success: false,
         message: 'Booking record not found',
       });
+    }
+
+    // Verify ownership: Ensure therapist modifying this booking is the assigned therapist or admin
+    const userId = req.user?.id;
+    const userEmail = req.user?.email?.toLowerCase();
+    const isAdmin = req.user?.role === 'admin' || req.user?.accountType === 'Admin';
+
+    if (!isAdmin) {
+      const psychProfile = await Psychologist.findOne({
+        $or: [{ user: userId }, { email: userEmail }],
+      });
+      const pId = psychProfile ? psychProfile._id.toString() : userId;
+
+      const isAssignedTherapist =
+        booking.therapistId === pId ||
+        booking.therapistId === userId ||
+        (booking.therapist && booking.therapist.toString() === userId);
+
+      if (!isAssignedTherapist) {
+        return res.status(403).json({
+          success: false,
+          message: 'Forbidden: You do not have permission to modify another therapist’s booking.',
+        });
+      }
     }
 
     booking.status = status;

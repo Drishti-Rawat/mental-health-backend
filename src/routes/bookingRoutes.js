@@ -8,8 +8,8 @@ import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-router.post('/', createBooking);
-router.get('/my-bookings', getMyBookings);
-router.patch('/:id/status', updateBookingStatus);
+router.post('/', protect, createBooking);
+router.get('/my-bookings', protect, getMyBookings);
+router.patch('/:id/status', protect, updateBookingStatus);
 
 export default router;
