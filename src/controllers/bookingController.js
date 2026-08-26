@@ -137,6 +137,8 @@ export const getMyBookings = async (req, res, next) => {
       req.user?.accountType === 'Therapist' ||
       req.user?.accountType === 'Practitioner';
 
+    const { status, date, upcoming } = req.query;
+
     const psychProfile = await Psychologist.findOne({
       $or: [
         ...(userId ? [{ user: userId }] : []),
@@ -170,12 +172,50 @@ export const getMyBookings = async (req, res, next) => {
       };
     }
 
-    const bookings = await Booking.find(query).sort({ createdAt: -1 });
+    const allBookings = await Booking.find(query).sort({ createdAt: -1 });
+
+    // Categorize bookings server-side
+    const pending = allBookings.filter((b) => b.status === 'Pending');
+    const upcomingList = allBookings.filter((b) => b.status === 'Confirmed' && !isSlotInPast(b.date, b.slot));
+    const confirmed = allBookings.filter((b) => b.status === 'Confirmed');
+    const completed = allBookings.filter((b) => b.status === 'Completed');
+    const rejected = allBookings.filter((b) => b.status === 'Rejected');
+
+    // Apply backend query filters if requested
+    let resultBookings = [...allBookings];
+
+    if (upcoming === 'true') {
+      resultBookings = upcomingList;
+    } else if (status && status !== 'All') {
+      if (status === 'Upcoming') {
+        resultBookings = upcomingList;
+      } else {
+        resultBookings = resultBookings.filter((b) => b.status === status);
+      }
+    }
+
+    if (date && date !== 'All') {
+      resultBookings = resultBookings.filter((b) => b.date === date);
+    }
 
     res.status(200).json({
       success: true,
-      count: bookings.length,
-      bookings,
+      count: resultBookings.length,
+      bookings: resultBookings,
+      allBookings,
+      upcoming: upcomingList,
+      pending,
+      confirmed,
+      completed,
+      rejected,
+      metrics: {
+        pendingCount: pending.length,
+        upcomingCount: upcomingList.length,
+        totalCount: allBookings.length,
+        completedCount: completed.length,
+        confirmedCount: confirmed.length,
+        rejectedCount: rejected.length,
+      },
     });
   } catch (error) {
     next(error);

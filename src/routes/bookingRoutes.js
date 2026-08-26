@@ -9,6 +9,7 @@ import { protect } from '../middleware/authMiddleware.js';
 const router = express.Router();
 
 router.post('/', protect, createBooking);
+router.get('/', protect, getMyBookings);
 router.get('/my-bookings', protect, getMyBookings);
 router.patch('/:id/status', protect, updateBookingStatus);
 
