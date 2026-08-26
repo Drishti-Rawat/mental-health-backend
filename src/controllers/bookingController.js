@@ -10,7 +10,10 @@ export const isSlotInPast = (dateStr, slotStr) => {
   if (!dateStr || !slotStr) return false;
 
   const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${year}-${month}-${day}`;
 
   if (dateStr < todayStr) return true;
   if (dateStr > todayStr) return false;
@@ -129,25 +132,34 @@ export const getMyBookings = async (req, res, next) => {
     const userId = req.user?.id;
     const userEmail = req.user?.email?.toLowerCase();
     const role = req.user?.role;
+    const isTherapistRole =
+      role === 'therapist' ||
+      req.user?.accountType === 'Therapist' ||
+      req.user?.accountType === 'Practitioner';
+
+    const psychProfile = await Psychologist.findOne({
+      $or: [
+        ...(userId ? [{ user: userId }] : []),
+        ...(userEmail ? [{ email: userEmail }] : []),
+      ],
+    });
 
     let query = {};
 
-    if (role === 'therapist') {
-      // Find therapist profile linked to this authenticated user
-      const psychProfile = await Psychologist.findOne({
-        $or: [{ user: userId }, { email: userEmail }],
-      });
-
+    if (isTherapistRole || psychProfile) {
       const pId = psychProfile ? psychProfile._id.toString() : userId;
+      const pName = psychProfile?.name || req.user?.name;
 
-      // Strict therapist data isolation: Only return bookings assigned to this specific therapist
-      query = {
-        $or: [
-          { therapistId: pId },
-          { therapistId: userId },
-          { therapist: userId },
-        ],
-      };
+      const therapistConditions = [
+        ...(pId ? [{ therapistId: pId }, { therapist: pId }] : []),
+        ...(userId ? [{ therapistId: userId }, { therapist: userId }] : []),
+      ];
+
+      if (pName) {
+        therapistConditions.push({ therapistName: pName });
+      }
+
+      query = { $or: therapistConditions };
     } else {
       // Patient user: Only return bookings for this specific patient
       query = {
@@ -219,6 +231,14 @@ export const updateBookingStatus = async (req, res, next) => {
       }
     }
 
+    // Prevent accepting an appointment that is already in the past
+    if (status === 'Confirmed' && isSlotInPast(booking.date, booking.slot)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot accept this booking as the appointment time slot has already passed.',
+      });
+    }
+
     booking.status = status;
     await booking.save();
 
@@ -229,5 +249,30 @@ export const updateBookingStatus = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+/**
+ * Auto-reject all pending bookings whose date and time slot have passed
+ */
+export const autoRejectPastPendingBookings = async () => {
+  try {
+    const pendingBookings = await Booking.find({ status: 'Pending' });
+    let rejectedCount = 0;
+
+    for (const booking of pendingBookings) {
+      if (isSlotInPast(booking.date, booking.slot)) {
+        booking.status = 'Rejected';
+        await booking.save();
+        rejectedCount++;
+      }
+    }
+
+    if (rejectedCount > 0) {
+      console.log(`[Cron Job]: Auto-rejected ${rejectedCount} past pending booking(s).`);
+    }
+    return rejectedCount;
+  } catch (error) {
+    console.error('[Auto-Reject Cron Error]:', error);
   }
 };
